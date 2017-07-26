@@ -740,6 +740,12 @@ Extended Options: (makepkginfo options)
                            'directory.')
     parser.add_option('--nointeractive', '-n', action='store_true',
                       help='No interactive prompts.')
+    parser.add_option('--rebuild_catalogs', '--rebuild-catalogs', action='store_true',
+                      help='Rebuild catalogs after successfully importing an '
+                           'installer item. For use with --nointeractive.')
+    parser.add_option('--pkginfo_path', '--pkginfo-path', default='', type='string',
+                      help='Path to a completed pkginfo file. Automatically '
+                           'runs in --nointeractive mode when set.')
     parser.add_option('--repo_url', '--repo-url', default=pref('repo_url'),
                       help='Optional repo URL. If specified, overrides any '
                            'repo_url specified via --configure.')
@@ -783,6 +789,19 @@ Extended Options: (makepkginfo options)
     if options.icon_path and not os.path.isfile(options.icon_path):
         print >> sys.stderr, ('The specified icon file does not exist.')
         exit(-1)
+
+    if options.pkginfo_path:
+        print ("Detected a provided pkginfo")
+        if not os.path.isfile(options.pkginfo_path):
+            print >> sys.stderr, ('The specified pkginfo file does not exist.')
+            exit(-1)
+        try:
+            pkginfo = FoundationPlist.readPlist(options.pkginfo_path)
+            options.nointeractive = True
+            options.subdirectory = os.path.dirname(pkginfo['installer_item_location'])
+        except FoundationPlist.NSPropertyListSerializationException:
+            print >> sys.stderr, ('The specified pkginfo file contents is invalid')
+            exit(-1)
 
     if len(arguments) == 0:
         parser.print_usage()
@@ -882,8 +901,9 @@ Extended Options: (makepkginfo options)
     if not '--catalog' in arguments and not '-c' in arguments:
         default_catalog = pref('default_catalog') or 'testing'
         arguments.extend(['--catalog', default_catalog])
-    # call makepkginfo to make a pkginfo!
-    pkginfo = make_pkginfo(arguments)
+    if not options.pkginfo_path:
+        # call makepkginfo to make a pkginfo!
+        pkginfo = make_pkginfo(arguments)
     if not pkginfo:
         # makepkginfo returned an error
         print >> sys.stderr, 'Getting package info failed.'
@@ -1094,11 +1114,14 @@ Extended Options: (makepkginfo options)
     if not options.nointeractive:
         answer = raw_input('Rebuild catalogs? [y/n] ')
         if answer.lower().startswith('y'):
-            try:
-                make_catalogs(repo, options)
-            except RepoCopyError, errmsg:
-                print >> sys.stderr, errmsg
-                cleanup_and_exit(-1)
+            options.rebuild_catalogs = True
+
+    if options.rebuild_catalogs:
+        try:
+            make_catalogs(repo, options)
+        except RepoCopyError, errmsg:
+            print >> sys.stderr, errmsg
+            cleanup_and_exit(-1)
 
     cleanup_and_exit(0)
 
